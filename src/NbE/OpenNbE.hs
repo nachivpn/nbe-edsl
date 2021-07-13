@@ -186,7 +186,7 @@ instance  (Reifiable a, Reifiable b) => Reifiable (Either a b) where
 instance Reifiable Int where
   type Sem Int           = MDec SOPInt
   rTypeRep               = RTInt
-  reify                  = collectNf . remRedGuards . fmap reifySOPInt
+  reify                  = collectNf . remRedGuard . fmap reifySOPInt
   reflect n              = Leaf (SAdd (1,n) (SInt 0))
 
 instance (Reifiable a) => Reifiable (Err a) where
@@ -542,9 +542,9 @@ eqMDecSt _ _
 instance Eq (MDec (Nf a)) where
   m == m' = evalState (eqMDecSt m m') 0
 
-remRedGuards :: MDec (Nf a) -> MDec (Nf a)
-remRedGuards (Leaf x) = Leaf x
-remRedGuards b@(SCase n f g)
+remRedGuard :: MDec (Nf a) -> MDec (Nf a)
+remRedGuard (Leaf x) = Leaf x
+remRedGuard b@(SCase n f g)
   -- if these two functions yield same result when applied to
   -- different arguments, then they both don't use the argument
   | f (Var "_y") == g (Var "_z") = f (Var "_")
