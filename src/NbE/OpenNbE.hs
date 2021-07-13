@@ -9,7 +9,7 @@ module NbE.OpenNbE where
 
 import GExp
 import Control.Monad (ap, join)
-import Control.Monad.State.Lazy ( join, ap, State )
+import Control.Monad.State.Lazy ( join, ap, State, evalState )
 
 type Exp  a = GExp Reifiable a
 type Prim a = GPrim Reifiable a
@@ -525,21 +525,22 @@ instance Functor SArr where
 -- Optimizing Case expressions
 ------------------------------
 
-eqNe :: Ne a -> Ne b -> Bool
-eqNe n m = eqGExp (embNe n) (embNe m)
-
-eqNf :: Nf a -> Nf b -> Bool
-eqNf n m = eqGExp (embNf n) (embNf m)
+eqMDecSt :: MDec (Nf a) -> MDec (Nf a) -> St Bool
+eqMDecSt (Leaf x)      (Leaf y)
+  = eqGExpSt (embNf x) (embNf y)
+eqMDecSt (SCase n f g) (SCase n' f' g')
+  = do
+    b1 <- eqGExpSt (embNe n) (embNe n')
+    x <- freshCmp
+    b2 <- eqMDecSt (f (Var x)) (f' (Var x))
+    y <- freshCmp
+    b3 <- eqMDecSt (g (Var y)) (g' (Var y))
+    return $ b1 && b2 && b3
+eqMDecSt _ _
+  = return False
 
 instance Eq (MDec (Nf a)) where
-  (Leaf x)       == (Leaf y)
-    = x `eqNf` y
-  (SCase n f g) == (SCase n' f' g')
-    = (n `eqNe` n')
-      && f (Var "_") == f' (Var "_")
-      && g (Var "_") == g (Var "_")
-  _ == _
-    = False
+  m == m' = evalState (eqMDecSt m m') 0
 
 remRedGuards :: MDec (Nf a) -> MDec (Nf a)
 remRedGuards (Leaf x) = Leaf x
