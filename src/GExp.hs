@@ -425,6 +425,10 @@ app2 :: (c a, c b, c d, c (b -> d))
   => GExp c (a -> b -> d) -> GExp c a -> GExp c b -> GExp c d
 app2 f x y = app (app f x) y
 
+case' :: (c a, c b, c d)
+  => GExp c (Either a b) -> GExp c (a -> d) -> GExp c (b -> d) -> GExp c d
+case' = Case
+
 instance Num (GExp c Int) where
   x + y       = Prim (Add x y)
   x * y       = Prim (Mul x y)
