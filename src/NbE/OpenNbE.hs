@@ -201,12 +201,15 @@ instance (Reifiable a) => Reifiable (Err a) where
 instance (Reifiable s, Reifiable a) => Reifiable (State s a) where
   type Sem (State s a)   = MSt s (Sem a)
   rTypeRep               = RTState rTypeRep rTypeRep
-  reify m                = NGet (collectMStRes . runMState m . eval)
+  reify m                = NGet (collectNfStRes
+      . fmap (mapTup reify reifyMStRes)
+      . runMState m
+      . eval)
     where
     --
-    collectMStRes :: MDec (Sem s, MStRes s (Sem a)) -> NfStResCase s a
-    collectMStRes (Leaf (s,x))  = NPutSeq (reify s) (reifyMStRes x)
-    collectMStRes (SCase n g h) = NCaseSt n (collectMStRes . g) (collectMStRes . h)
+    collectNfStRes :: MDec (Nf s, NfStRes s a) -> NfStResCase s a
+    collectNfStRes (Leaf (n,x))  = NPutSeq n x
+    collectNfStRes (SCase n g h) = NCaseSt n (collectNfStRes . g) (collectNfStRes . h)
     --
     reifyMStRes :: MStRes s (Sem a) -> NfStRes s a
     reifyMStRes (SRetSt x)    = NRetSt (reify x)
@@ -227,7 +230,7 @@ instance (Reifiable a) => Reifiable (Arr a) where
 evalPrim :: forall a . Reifiable a => Prim a -> Sem a
 evalPrim (Mul e1 e2) = mul' <$> (eval e1) <*> (eval e2)
 evalPrim (Add e1 e2) = add' <$> (eval e1) <*> (eval e2)
-evalPrim (Rec n f a) = run @a $
+evalPrim (Rec n f a) = runMDec @a $
   rec' @a
     <$> eval n
     <*> return (eval f)
@@ -249,7 +252,7 @@ eval (Case s f g)  = let
   s' = eval s;
   f' = eval f;
   g' = eval g in
-  run @a (either f' g' <$> s')
+  runMDec @a (either f' g' <$> s')
 eval (RetErr e)    = return (eval e)
 eval (BindErr e f) = eval e >>= eval f
 eval (Throw e)     = throw' (eval e)
@@ -356,10 +359,10 @@ data MDec a where
     => Ne (Either a b) -> (Exp a -> MDec c) -> (Exp b -> MDec c) -> MDec c
 
 -- enables extraction of result of a case distinction (used for evaluating Case)
-run :: forall a . Reifiable a => MDec (Sem a) -> Sem a
-run = go (rTypeRep @a)
+runMDec :: forall a . Reifiable a => MDec (Sem a) -> Sem a
+runMDec = go (rTypeRep @a)
   where
-    -- auxiliary function for run which receives induction parameter
+    -- auxiliary function for runMDec which receives induction parameter
     go :: forall a . RTypeRep Reifiable a -> MDec (Sem a) -> Sem a
     go RTUnit        _ = ()
     go RTInt         m = join m
@@ -370,7 +373,7 @@ run = go (rTypeRep @a)
     go RTString      m = join m
     go (RTState s a) m = collectState m
     go (RTArr (a1 :: RTypeRep Reifiable a1))     m
-      = SArr (run @Int (fmap arrLen' m)) (run @a1 . (<*>) (fmap arrIx' m) . pure)
+      = SArr (runMDec @Int (fmap arrLen' m)) (runMDec @a1 . (<*>) (fmap arrIx' m) . pure)
 
 collectNf :: Reifiable a => MDec (Nf a) -> Nf a
 collectNf (Leaf x)       = x
