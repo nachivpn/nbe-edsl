@@ -24,7 +24,9 @@ source-repository head
 
 library
   exposed-modules:
+      Arr
       GExp
+      NbE.ClosedNbE
   other-modules:
       Paths_nbe_edsl
   hs-source-dirs:
