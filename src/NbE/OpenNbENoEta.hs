@@ -474,22 +474,13 @@ sumComm = Lam $ \s -> Fst (Case s
 exar1 :: Exp Int
 exar1 = ArrLen (Arr 5 (Lam $ id))
 
--- *NbE.OpenNbE> norm exar1
--- 5
-
 -- index into known array
 exar2 :: Exp Int
 exar2 = ArrIx (Arr 5 (Lam $ const 20)) 1
 
--- *NbE.OpenNbE> norm exar2
--- 20
-
 -- map fusion
 exar3 :: Exp (Arr Int -> Arr Int)
 exar3 = Lam $ \ arr -> mapArr (Lam (+ 2)) (mapArr (Lam (+ 1)) arr)
-
--- *NbE.OpenNbE> norm exar3
--- (\x0. newArr length(x0) (\x1. ((x0 ! x1) + 3)))
 
 -- map-fold fusion
 exar4 :: Exp (Arr Int -> Int)
@@ -498,9 +489,6 @@ exar4 = Lam $ \ arr ->
     (Lam $ \ acc -> Lam $ \ x -> acc + x)
     0
     (mapArr (Lam (+ 1)) arr)
-
--- *NbE.OpenNbE> norm exar4
--- (\x0. (rec length(x0) (\x1. (\x2. (x2 + ((x0 ! x1) + 1)))) 0))
 
 -- map fusion with case
 exar5 :: Exp (BoolE -> Arr Int -> Arr Int)
