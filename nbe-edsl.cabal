@@ -29,6 +29,7 @@ library
       GExp
       NbE.ClosedNbE
       NbE.OpenNbE
+      NbE.OpenNbENoEta
   other-modules:
       Paths_nbe_edsl
   hs-source-dirs:
