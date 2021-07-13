@@ -262,6 +262,8 @@ instance Show (GExp c a) where
 -- Equality checking
 --------------------
 
+-- Hack alert: we'll pretend that variables beg. with "_" are fresh
+
 freshCmp :: St String
 freshCmp = fresh "_"
 
