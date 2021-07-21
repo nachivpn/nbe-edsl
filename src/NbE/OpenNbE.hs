@@ -399,7 +399,7 @@ instance Applicative MDec where
 
 instance Monad MDec where
   return x             = Leaf x
-  (Leaf x)       >>= f = f x
+  (Leaf x)      >>= f = f x
   (SCase n g h) >>= f = SCase n ((=<<) f . g) ((=<<) f . h)
 
 --------------------------
@@ -476,8 +476,6 @@ get' = MSt $ \ s -> Leaf (s , SRetSt s)
 
 put' :: (Sem s) -> MSt s ()
 put' s = MSt $ \ _ -> Leaf (s, SRetSt ())
-
--- i.e., MSt s a = Sem s -> (MStRes s a, Sem s)
 
 embRes :: MStRes s a -> MSt s a
 embRes x = MSt $ \s -> Leaf (s, x)
