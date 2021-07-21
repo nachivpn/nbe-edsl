@@ -69,6 +69,25 @@ data Nf a where
     => Ne (Either a b) -> (Exp a -> Nf c) -> (Exp b -> Nf c) -> Nf c
   NArr       :: (Reifiable a)
     => Nf Int -> (Exp Int -> Nf a) -> Nf (Arr a)
+  NGet    :: (Reifiable a, Reifiable s)
+    => (Exp s -> NfStResCase s a) -> Nf (State s a)
+  NPut :: (Reifiable s)
+    => Nf s -> Nf (State s ())
+  NRetSt_ :: (Reifiable a)
+    => Nf a -> Nf (State s a)
+
+-- Note: iso to `MDec (Nf s, NfStRes s a)`
+data NfStResCase s a where
+  NPutSeq :: ()
+    => Nf s -> NfStRes s a -> NfStResCase s a
+  NCaseSt :: (Reifiable a, Reifiable b)
+    => Ne (Either a b) -> (Exp a -> NfStResCase s c) -> (Exp b -> NfStResCase s c) -> NfStResCase s c
+
+data NfStRes s a where
+  NRetSt :: (Reifiable a, Reifiable s)
+    => Nf a -> NfStRes s a
+  NBindSt   :: (Reifiable a, Reifiable b, Reifiable s)
+    => Ne (State s a) -> (Exp a -> Nf (State s b)) -> NfStRes s b
 
 -- embed neutrals back into expressions
 embNe :: Ne a -> Exp a
@@ -104,7 +123,16 @@ embNf (NInl n)                 = Inl (embNf n)
 embNf (NInr n)                 = Inr (embNf n)
 embNf (NCase n f g)            = Case (embNe n) (Lam $ embNf .f) (Lam $ embNf .g)
 embNf (NArr n f  )             = Arr (embNf n) (Lam $ embNf . f)
+embNf (NGet f)                 = Get (Lam (go . f))
+  where
+    go (NPutSeq s x)   = Put (embNf s) `seqSt` embNfStRes x
+    go (NCaseSt n g h) = Case (embNe n) (Lam $ go . g) (Lam $ go . h)
+embNf (NPut n)                 = Put (embNf n)
+embNf (NRetSt_ n)              = RetSt (embNf n)
 
+embNfStRes :: Reifiable s => NfStRes s a -> Exp (State s a)
+embNfStRes (NRetSt x)      = RetSt (embNf x)
+embNfStRes (NBindSt n f)   = BindSt (embNe n) (Lam $ embNf . f)
 ----------------------------
 -- Semantics and Reification
 ----------------------------
@@ -175,6 +203,18 @@ instance (Reifiable a) => Reifiable (Arr a) where
   runMDec m            = (SArr (runMDec @Int (fmap (arrLen' . fst) m)) (runMDec @a . (<*>) (fmap (arrIx' . fst) m) . pure)
     , collect (snd <$> m))
 
+instance (Reifiable s, Reifiable a) => Reifiable (State s a) where
+  type Sem (State s a)   = (MSt s (Sem a), Nf (State s a))
+  rTypeRep               = RTState rTypeRep rTypeRep
+  reify                  = snd
+  reflect n              = (MSt $ \ s -> Leaf (s, SBindSt n (embRes . SRetSt . eval)), NUp n)
+  runMDec m              = (collectState (fst <$> m) , collect (snd <$> m))
+    where
+    -- "collect" state comp. stuck under case distinction
+    collectState :: MDec (MSt s sa) -> MSt s sa
+    collectState (Leaf x)       = x
+    collectState (SCase n f g) = sCaseState n (collectState . f) (collectState . g)
+
 -------------
 -- Evaluation
 -------------
@@ -191,7 +231,6 @@ evalPrim (Rec n f a) = runMDec @a $
     <$> (fst $ eval n)
     <*> return ((.) fst . fst $ eval f)
     <*> return (eval a)
-
 
 eval :: forall a . Reifiable a
   => Exp a -> Sem a
@@ -221,7 +260,21 @@ eval (ArrIx e e')  = arrIx' (fst $ eval e) e'
 eval (Let (e :: Exp a1) e')  = let y = eval e; f = eval e'
   in reflect @a (NLet (reify @a1 y) (reify f))
 eval (Save e)  = reflect @a (NSave e)
-eval _         = error "Effects are TBD!"
+eval (Get e)   = let {
+    (f,nf) = eval e ;
+    x = get' >>= (fst . f)}
+  in (x, reifySt x)
+eval (Put e) = let x = eval e
+  in (put' x, NPut (reify x))
+eval (RetSt e)     = let x = eval e
+  in (return x , NRetSt_ (reify x))
+eval (BindSt e e') = let {
+    (m,_) = eval e ;
+    mf    = runMState m ;
+    (g,_) = eval e' ;
+    x     = m >>= (fst . g)}
+  in (x , reifySt x)
+eval _ = error "Err is TBD!"
 
 -- insert primitive values into semantics
 drown :: forall a . PrimTy a => a -> Sem a
@@ -404,10 +457,21 @@ get' = MSt $ \ s -> Leaf (s , SRetSt s)
 put' :: (Sem s) -> MSt s ()
 put' s = MSt $ \ _ -> Leaf (s, SRetSt ())
 
--- i.e., MSt s a = Sem s -> (MStRes s a, Sem s)
-
 embRes :: MStRes s a -> MSt s a
 embRes x = MSt $ \s -> Leaf (s, x)
+
+reifySt :: (Reifiable a, Reifiable s) => MSt s (Sem a) -> Nf (State s a)
+reifySt m = NGet (collectNfSt
+    . fmap (mapTup reify reifyMStRes)
+    . runMState m
+    . eval)
+    where
+      collectNfSt :: MDec (Nf s, NfStRes s a) -> NfStResCase s a
+      collectNfSt (Leaf (n,x))  = NPutSeq n x
+      collectNfSt (SCase n g h) = NCaseSt n (collectNfSt . g) (collectNfSt . h)
+      reifyMStRes :: (Reifiable a, Reifiable s) => MStRes s (Sem a) -> NfStRes s a
+      reifyMStRes (SRetSt x)    = NRetSt (reify x)
+      reifyMStRes (SBindSt n f) = NBindSt n (reifySt . f)
 
 -- mutually recursive Functor instances
 instance Functor (MSt s) where
