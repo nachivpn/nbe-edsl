@@ -7,10 +7,6 @@
 module Experimental.Let where
 
 import GExp
-import Control.Monad (ap, join)
-import Control.Monad.State.Lazy ( join, ap, State )
-
-import Arr (mapArr, foldArr)
 
 type Exp  a = GExp Reifiable a
 type Prim a = GPrim Reifiable a
@@ -82,7 +78,7 @@ quote :: Reifiable a => Sem a -> Exp a
 quote = embNf . reify
 
 instance Reifiable Int where
-  type Sem Int = (Int,[Ne Int])
+  type Sem Int    = (Int,[Ne Int])
   rTypeRep        = RTInt
   reify   (k,ns)  = NInt k ns
   reflect n       = (0,[n])
