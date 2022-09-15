@@ -10,7 +10,7 @@ import GExp
 import Control.Monad (ap, join)
 import Control.Monad.State.Lazy ( join, ap, State )
 
-import Arr ( mapArr, foldArr )
+import Arr (mapArr, foldArr)
 
 type Exp  a = GExp Reifiable a
 type Prim a = GPrim Reifiable a
@@ -35,34 +35,34 @@ data Ne a where
     => Ne (a , b)  -> Ne a
   NSnd    :: (Reifiable a)
     => Ne (a , b)  -> Ne b
-  NLet      :: (Reifiable a, Reifiable b)
+  NLet    :: (Reifiable a, Reifiable b)
     => Nf a -> Nf (a -> b) -> Ne b
 
 -- normal forms, or "values" and "stuck terms (of positive types)"
 data Nf a where
-  NUp      :: ()
+  NUp   :: ()
     => Ne a -> Nf a
-  NLift    :: (PrimTy a)
+  NLift :: (PrimTy a)
     => a -> Nf a
-  NInt     :: ()
+  NInt  :: ()
     => Int -> [Ne Int] -> Nf Int
-  NLam     :: (Reifiable a, Reifiable b)
+  NLam  :: (Reifiable a, Reifiable b)
     => (Exp a -> Nf b) -> Nf (a -> b)
 
 -- embed neutrals back into expressions
 embNe :: Ne a -> Exp a
 embNe (NVar x)   = Var x
 embNe (NApp m n) = App (embNe m) (embNf n)
-embNe (NLet n m)   = Let (embNf n) (embNf m)
+embNe (NLet n m) = Let (embNf n) (embNf m)
 
 -- embed normal forms back into expressions
 embNf :: Nf a -> Exp a
-embNf (NUp n)                  = embNe n
-embNf (NLift x)                = Lift x
-embNf (NLam f)                 = Lam (embNf . f)
-embNf (NInt k [])              = Lift k
-embNf (NInt 0 ns)              = foldr1 (\e1 e2 -> Prim (Add e1 e2)) (map embNe ns)
-embNf (NInt k ns)              = foldr (\n e -> Prim (Add (embNe n) e)) (Lift k) ns
+embNf (NUp n)     = embNe n
+embNf (NLift x)   = Lift x
+embNf (NLam f)    = Lam (embNf . f)
+embNf (NInt k []) = Lift k
+embNf (NInt 0 ns) = foldr1 (\e1 e2 -> Prim (Add e1 e2)) (map embNe ns)
+embNf (NInt k ns) = foldr (\n e -> Prim (Add (embNe n) e)) (Lift k) ns
 
 ----------------------------
 -- Semantics and Reification
