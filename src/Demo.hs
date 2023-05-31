@@ -4,8 +4,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ConstrainedClassMethods #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE RebindableSyntax #-}
 module Demo where
 
+import Prelude hiding (Monad(..))
 import GExp
 import NbE.OpenNbE hiding (power, cube, flipE, multipleOf3)
 import Control.Monad.State.Lazy ( State )
@@ -94,18 +97,34 @@ get = Get (lam returnSt)
 bindSt :: Rf3 s a b => Exp (State s a) -> Exp (a -> State s b) -> Exp (State s b)
 bindSt = BindSt
 
+-- | A version of monads where everything is nested inside a wrapper w
+--
+-- w is the wrapper
+-- m is the monad
+-- c is a constraint that is applied to all the inner values
+class NestedMonad c w m | w m -> c where
+  return :: c a => w a -> w (m a)
+  (>>=) :: (c a, c b) => w (m a) -> (w a -> w (m b)) -> w (m b)
+  (>>) :: (c a, c b) => w (m a) -> w (m b) -> w (m b)
+  m >> m' = m >>= const m'
+
+instance Reifiable s => NestedMonad Reifiable (GExp Reifiable) (State s) where
+  return = returnSt
+  m >>= f = bindSt m (lam f)
+  -- (>>) = seqSt
+
 prgSt :: Exp (Arr Int -> State (Arr Int) Int)
-prgSt = lam $ \ arr ->
+prgSt = lam $ \ arr -> do
     put (mapArr (lam (+2)) arr)
-    `seqSt` put (mapArr (lam (+1)) arr)
-    `seqSt` get
-    `bindSt` (lam $ \ arr' -> returnSt (arr' ! 0))
+    put (mapArr (lam (+1)) arr)
+    arr' <- get
+    returnSt (arr' ! 0)
 
 prgBrSt :: Exp (Either Int Int -> Arr Int -> State (Arr Int) Int)
-prgBrSt = lam2 $ \scr arr ->
+prgBrSt = lam2 $ \scr arr -> do
     put (mapArr (lam (+1)) arr)
-    `seqSt` (case' scr
+    case' scr
         (lam $ \x -> put (mapArr (lam (+x)) arr))
-        (lam $ \y -> returnSt unit))
-    `seqSt` get
-    `bindSt` (lam (\arr' -> returnSt (arr' ! 0)))
+        (lam $ \y -> returnSt unit)
+    arr' <- get
+    return (arr' ! 0)
